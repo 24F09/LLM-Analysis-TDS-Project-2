@@ -1,0 +1,54 @@
+name: TDS Preview Page
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Step URL (e.g. https://tds-llm-analysis.s-anand.net/project2)"
+        required: true
+        default: "https://tds-llm-analysis.s-anand.net/project2"
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install parser deps
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install beautifulsoup4 lxml
+
+      - name: Fetch page
+        env:
+          URL: ${{ inputs.url }}
+        run: |
+          set -euo pipefail
+          curl -sS "$URL" -o page.html
+          python3 - << 'PY'
+import pathlib
+from bs4 import BeautifulSoup
+html = pathlib.Path("page.html").read_text(encoding="utf-8", errors="ignore")
+soup = BeautifulSoup(html, "lxml")
+for tag in soup(["script","style","noscript"]): tag.decompose()
+text = " ".join(soup.get_text(separator=" ").split())
+pathlib.Path("page.txt").write_text(text[:6000], encoding="utf-8")
+PY
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tds-page
+          path: |
+            page.html
+            page.txt
+
+      - name: Show page in summary
+        run: |
+          echo "## Current Step Page" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** \`${{ inputs.url }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<details><summary>Text preview</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat page.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
