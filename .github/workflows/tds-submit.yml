@@ -1,0 +1,72 @@
+name: TDS Submit
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Step URL (start with https://tds-llm-analysis.s-anand.net/project2)"
+        required: true
+        default: "https://tds-llm-analysis.s-anand.net/project2"
+      answer:
+        description: "Answer for this step"
+        required: true
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Submit answer
+        id: submit
+        env:
+          TDS_EMAIL: ${{ secrets.TDS_EMAIL }}
+          TDS_SECRET: ${{ secrets.TDS_SECRET }}
+          URL: ${{ inputs.url }}
+          ANSWER: ${{ inputs.answer }}
+        run: |
+          set -euo pipefail
+
+          echo "Submitting..."
+          
+          RESP=$(curl -sS -X POST "https://tds-llm-analysis.s-anand.net/submit" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+                  --arg email "$TDS_EMAIL" \
+                  --arg secret "$TDS_SECRET" \
+                  --arg url "$URL" \
+                  --arg answer "$ANSWER" \
+                  '{email:$email, secret:$secret, url:$url, answer:$answer}')")
+
+          echo "$RESP" > response.json
+          echo "raw=$(cat response.json | jq -c '.')" >> "$GITHUB_OUTPUT"
+
+          NEXT_URL=$(jq -r '.next_url // .next // .url // empty' response.json)
+          if [ -n "$NEXT_URL" ]; then
+            echo "next_url=$NEXT_URL" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload JSON response
+        uses: actions/upload-artifact@v4
+        with:
+          name: tds-response
+          path: response.json
+
+      - name: Summary
+        run: |
+          echo "## TDS Submission Result" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**URL submitted:** \`${{ inputs.url }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Response:**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat response.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          if [ -n "${{ steps.submit.outputs.next_url }}" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Next URL:** ${{ steps.submit.outputs.next_url }}" >> $GITHUB_STEP_SUMMARY
+          fi
