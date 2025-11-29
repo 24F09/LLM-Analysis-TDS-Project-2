@@ -1,0 +1,45 @@
+name: TDS Preview Page (Lite)
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Step URL (e.g. https://tds-llm-analysis.s-anand.net/project2)"
+        required: true
+        default: "https://tds-llm-analysis.s-anand.net/project2"
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch page (UA + redirects)
+        env:
+          URL: ${{ inputs.url }}
+        run: |
+          set -euo pipefail
+          curl -sS --location \
+            -H "User-Agent: Mozilla/5.0 (GitHubActions; +https://github.com)" \
+            "$URL" -o page.html
+
+          # Strip tags and compress whitespace (shell-only)
+          sed 's/<[^>]*>/ /g' page.html | tr -s '[:space:]' ' ' | cut -c1-8000 > page.txt || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tds-page-lite
+          path: |
+            page.html
+            page.txt
+
+      - name: Show page in summary
+        run: |
+          echo "## Current Step Page (Lite)" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** \`${{ inputs.url }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<details><summary>Text preview</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat page.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
